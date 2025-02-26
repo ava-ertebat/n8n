@@ -131,7 +131,7 @@ docker --version
 ```
 docker volume create portainer_data
 
-docker run -d -p 8000:8000 -p 8443:8443 --name portainer \
+docker run -d -p 8000:8000 -p 9443:9443 --name portainer \
     --restart=always \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v portainer_data:/data \
@@ -193,8 +193,8 @@ Image: docker.n8n.io/n8nio/n8n:latest
 
 #### 🔌 Port Mapping:
 ```
-Host: 5678
-Container: 5678
+Host: 8443
+Container: 8443
 ```
 
 #### 📂 Volumes:
@@ -208,7 +208,7 @@ n8n_data:/home/node/.n8n
 ```
 N8N_PROTOCOL=https
 N8N_HOST=n8n.yourdomain.com
-N8N_PORT=5678
+N8N_PORT=8443
 N8N_SSL_KEY=/home/node/.n8n/private.key
 N8N_SSL_CERT=/home/node/.n8n/certificate.crt
 N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
@@ -222,7 +222,7 @@ N8N_RUNNERS_ENABLED=true
 ### 7️⃣ Verify and Access n8n
 Access **n8n** via:  
 ```
-https://n8n.yourdomain.com:5678
+https://n8n.yourdomain.com:8443
 ```
 
 ---
