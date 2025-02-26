@@ -70,3 +70,204 @@ Want to shape the future of automation? Check out our [job posts](https://n8n.io
 **Short answer:** It means "nodemation" and is pronounced as n-eight-n.
 
 **Long answer:** "I get that question quite often (more often than I expected) so I decided it is probably best to answer it here. While looking for a good name for the project with a free domain I realized very quickly that all the good ones I could think of were already taken. So, in the end, I chose nodemation. 'node-' in the sense that it uses a Node-View and that it uses Node.js and '-mation' for 'automation' which is what the project is supposed to help with. However, I did not like how long the name was and I could not imagine writing something that long every time in the CLI. That is when I then ended up on 'n8n'." - **Jan Oberhauser, Founder and CEO, n8n.io**
+
+
+# ⚡ n8n Installing Guide with Docker & Portainer
+
+Welcome to our comprehensive guide on installing **n8n** — an extendable workflow automation tool — on **Ubuntu 24.04** using **Docker** and **Portainer**.  
+This **step-by-step tutorial** will help you configure **n8n** with **HTTPS (SSL)** enabled for secure access, ensuring full control over your Docker containers using Portainer.
+
+---
+
+## 🚀 Prerequisites
+
+### 💾 Software Requirements
+- ✅ **Ubuntu 24.04** (fresh installation recommended)  
+- ✅ **Docker** (v28+)  
+- ✅ **Docker Compose Plugin**  
+- ✅ **Portainer (CE)** for Docker management  
+- ✅ **acme.sh** for free SSL certificates from Let's Encrypt  
+- ✅ **Domain name** (e.g., `n8n.yourdomain.com`) pointing to your server's IP  
+
+### 🖥️ Hardware Requirements (Recommended)
+- 💾 2GB RAM (minimum)  
+- 💿 10GB Disk space  
+- 🌐 A public-facing server (for HTTPS verification)  
+
+---
+
+## 🏗️ Step-by-Step Installation
+
+---
+
+### 1️⃣ Update and Upgrade Your Server
+```
+sudo apt update -y && sudo apt upgrade -y
+```
+
+---
+
+### 2️⃣ Install Docker and Docker Compose Plugin
+```
+sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+✅ **Verify Docker installation:**
+```
+docker --version
+```
+
+---
+
+### 3️⃣ Install Portainer (Docker Management UI)
+```
+docker volume create portainer_data
+
+docker run -d -p 8000:8000 -p 9443:9443 --name portainer \
+    --restart=always \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v portainer_data:/data \
+    portainer/portainer-ce:latest
+```
+
+🔗 Access Portainer at:  
+```
+https://[YOUR_SERVER_IP]:9443
+```
+🔑 Set admin credentials and connect to **local** Docker environment.
+
+---
+
+### 4️⃣ Install acme.sh (SSL Certificate Tool)
+```
+sudo apt install curl socat -y
+curl https://get.acme.sh | sh
+source ~/.bashrc
+
+~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+~/.acme.sh/acme.sh --register-account -m your-email@example.com
+```
+
+---
+
+### 5️⃣ Generate SSL Certificates for n8n Domain
+```
+~/.acme.sh/acme.sh --issue -d n8n.yourdomain.com --standalone
+
+sudo mkdir -p /etc/ssl/private /etc/ssl/certs
+
+~/.acme.sh/acme.sh --installcert -d n8n.yourdomain.com \
+--key-file /etc/ssl/private/n8n_private.key \
+--fullchain-file /etc/ssl/certs/n8n_certificate.crt
+
+sudo chown 1000:1000 /etc/ssl/private/n8n_private.key
+sudo chown 1000:1000 /etc/ssl/certs/n8n_certificate.crt
+
+sudo chmod 600 /etc/ssl/private/n8n_private.key
+sudo chmod 644 /etc/ssl/certs/n8n_certificate.crt
+```
+
+---
+
+### 6️⃣ Deploy n8n Using Portainer (Full Access & SSL Enabled)
+
+#### 🛠 Steps in Portainer:
+1. Go to **Volumes** → **+ Add volume** → Name it:  
+```
+n8n_data
+```
+
+2. Go to **Containers** → **+ Add container** → Fill in:  
+```
+Name: n8n
+Image: docker.n8n.io/n8nio/n8n:latest
+```
+
+#### 🔌 Port Mapping:
+```
+Host: 5678
+Container: 5678
+```
+
+#### 📂 Volumes:
+```
+/etc/ssl/private/n8n_private.key:/home/node/.n8n/private.key
+/etc/ssl/certs/n8n_certificate.crt:/home/node/.n8n/certificate.crt
+n8n_data:/home/node/.n8n
+```
+
+#### ⚡ Environment Variables (Env):
+```
+N8N_PROTOCOL=https
+N8N_HOST=n8n.yourdomain.com
+N8N_PORT=5678
+N8N_SSL_KEY=/home/node/.n8n/private.key
+N8N_SSL_CERT=/home/node/.n8n/certificate.crt
+N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+N8N_RUNNERS_ENABLED=true
+```
+
+✅ **Click "Deploy the container"**
+
+---
+
+### 7️⃣ Verify and Access n8n
+Access **n8n** via:  
+```
+https://n8n.yourdomain.com:5678
+```
+
+---
+
+### 🌟 Maintenance & Updates
+
+#### 🔄 Auto-renew SSL Certificate:
+acme.sh handles auto-renewal. For manual renewal:  
+```
+~/.acme.sh/acme.sh --renew -d n8n.yourdomain.com --force
+docker restart n8n
+```
+
+---
+
+#### ⚡ Check Logs (For Debugging):
+```
+docker logs n8n
+```
+
+---
+
+#### ♻️ Restart or Stop n8n:
+```
+docker restart n8n
+docker stop n8n
+```
+
+---
+
+### 🏃 🎉 Congratulations!
+You have successfully installed and secured **n8n** with **Docker**, **Portainer**, and **SSL** on **Ubuntu 24.04**.  
+Now, you’re ready to build powerful workflows with secure web access! 🚀✨
+
+---
+
+## 📬 Get in Touch
+
+💬 **Have questions? Let’s talk!**  
+🌐 **Website:** [https://ava-ertebat.ir](https://ava-ertebat.ir)  
+📧 **Support Email:** support@ava-ertebat.ir  
+📧 **Personal Email:** omidswordfish@gmail.com  
+📱 **WhatsApp:** [Chat with me on WhatsApp](https://wa.me/989163422797?text=Hi%20there!%20I%20would%20like%20some%20help%20regarding%20n8n%20installation%20on%20Ubuntu%2024.04.)
+
+---
+
+✨ **Enjoy automating with n8n!** 🌟
+
