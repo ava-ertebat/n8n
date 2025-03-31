@@ -198,10 +198,18 @@ Container: 8443
 ```
 
 #### 📂 Volumes:
+#### 📂 Writable Bind:
 ```
-/etc/ssl/private/n8n_private.key:/home/node/.n8n/private.key
-/etc/ssl/certs/n8n_certificate.crt:/home/node/.n8n/certificate.crt
-n8n_data:/home/node/.n8n
+container:/etc/ssl/private/n8n_private.key
+volume:/home/node/.n8n/private.key
+
+container:/etc/ssl/certs/n8n_certificate.crt
+volume:/home/node/.n8n/certificate.crt
+```
+#### 📂 Writable Volume:
+```
+container:n8n_data
+volume:/home/node/.n8n
 ```
 
 #### ⚡ Environment Variables (Env):
