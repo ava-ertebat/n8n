@@ -206,13 +206,26 @@ n8n_data:/home/node/.n8n
 
 #### ⚡ Environment Variables (Env):
 ```
-N8N_PROTOCOL=https
-N8N_HOST=n8n.yourdomain.com
-N8N_PORT=8443
-N8N_SSL_KEY=/home/node/.n8n/private.key
-N8N_SSL_CERT=/home/node/.n8n/certificate.crt
-N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
-N8N_RUNNERS_ENABLED=true
+Name:N8N_PROTOCOL
+value:https
+
+Name:N8N_HOST
+value:n8n.yourdomain.com
+
+Name:N8N_PORT
+value:8443
+
+Name:N8N_SSL_KEY
+value:/home/node/.n8n/private.key
+
+Name:N8N_SSL_CERT
+value:/home/node/.n8n/certificate.crt
+
+Name:N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS
+value:true
+
+Name:N8N_RUNNERS_ENABLED
+value:true
 ```
 
 ✅ **Click "Deploy the container"**
