@@ -199,38 +199,28 @@ Container: 8443
 
 #### 📂 Volumes:
 ```
-container:/etc/ssl/private/n8n_private.key => Bind Mode
-volume:/home/node/.n8n/private.key => Writable
+- container:`/etc/ssl/private/n8n_private.key` → volume:`/home/node/.n8n/private.key` → (Writable) and (Bind Mode)
 
-container:/etc/ssl/certs/n8n_certificate.crt => Bind Mode
-volume:/home/node/.n8n/certificate.crt => Writable
+- container:`/etc/ssl/certs/n8n_certificate.crt` → volume:`/home/node/.n8n/certificate.crt` → (Writable) and (Bind Mode)
 
-container:n8n_data => Volume Mode
-volume:/home/node/.n8n => Writable
+- container:`n8n_data` → volume:`/home/node/.n8n` → (Writable) and (Volume Mode)
 ```
 
 #### ⚡ Environment Variables (Env):
 ```
-Name:N8N_PROTOCOL
-value:https
+- Name:`N8N_PROTOCOL` → value:`https`
 
-Name:N8N_HOST
-value:n8n.yourdomain.com
+- Name:`N8N_HOST` → value:`n8n.yourdomain.com`
 
-Name:N8N_PORT
-value:8443
+- Name:`N8N_PORT` → value:`8443`
 
-Name:N8N_SSL_KEY
-value:/home/node/.n8n/private.key
+- Name:`N8N_SSL_KEY` → value:`/home/node/.n8n/private.key`
 
-Name:N8N_SSL_CERT
-value:/home/node/.n8n/certificate.crt
+- Name:`N8N_SSL_CERT` → value:`/home/node/.n8n/certificate.crt`
 
-Name:N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS
-value:true
+- Name:`N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS` → value:`true`
 
-Name:N8N_RUNNERS_ENABLED
-value:true
+- Name:`N8N_RUNNERS_ENABLED` → value:`true`
 ```
 
 ✅ **Click "Deploy the container"**
