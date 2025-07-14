@@ -4,9 +4,9 @@
         "id": {
             "type": "integer"
         },
-        "won_status": {
+        "name": {
             "type": "string"
         }
     },
-    "version": 1
+    "version": 5
 }

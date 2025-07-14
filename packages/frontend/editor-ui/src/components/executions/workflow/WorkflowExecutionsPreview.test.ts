@@ -2,7 +2,7 @@ import { describe, expect } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { faker } from '@faker-js/faker';
 import { createRouter, createWebHistory, RouterLink } from 'vue-router';
-import { randomInt, type ExecutionSummary } from 'n8n-workflow';
+import { randomInt, type ExecutionSummary, type AnnotationVote } from 'n8n-workflow';
 import { useSettingsStore } from '@/stores/settings.store';
 import WorkflowExecutionsPreview from '@/components/executions/workflow/WorkflowExecutionsPreview.vue';
 import { EnterpriseEditionFeature, VIEWS } from '@/constants';
@@ -12,9 +12,8 @@ import { createComponentRenderer } from '@/__tests__/render';
 import { createTestingPinia } from '@pinia/testing';
 import { mockedStore } from '@/__tests__/utils';
 import type { FrontendSettings } from '@n8n/api-types';
-import { useTestDefinitionStore } from '@/stores/testDefinition.store.ee';
-import { useExecutionsStore } from '@/stores/executions.store';
-import type { TestDefinitionRecord } from '@/api/testDefinition.ee';
+import { STORES } from '@n8n/stores';
+import { nextTick } from 'vue';
 
 const showMessage = vi.fn();
 const showError = vi.fn();
@@ -71,16 +70,6 @@ const executionDataFactory = (
 	annotation: { tags, vote: 'up' },
 });
 
-const testCaseFactory = (workflowId: string, annotationTagId?: string): TestDefinitionRecord => ({
-	id: faker.string.uuid(),
-	createdAt: faker.date.past().toString(),
-	updatedAt: faker.date.past().toString(),
-	evaluationWorkflowId: null,
-	annotationTagId,
-	workflowId,
-	name: `My test ${faker.number.int()}`,
-});
-
 const renderComponent = createComponentRenderer(WorkflowExecutionsPreview, {
 	global: {
 		stubs: {
@@ -95,7 +84,20 @@ describe('WorkflowExecutionsPreview.vue', () => {
 	const executionData: ExecutionSummary = executionDataFactory();
 
 	beforeEach(() => {
-		createTestingPinia();
+		createTestingPinia({
+			initialState: {
+				[STORES.SETTINGS]: {
+					settings: {
+						enterprise: {
+							[EnterpriseEditionFeature.AdvancedExecutionFilters]: true,
+						},
+					},
+				},
+				[STORES.EXECUTIONS]: {
+					activeExecution: executionData,
+				},
+			},
+		});
 	});
 
 	test.each([
@@ -135,118 +137,181 @@ describe('WorkflowExecutionsPreview.vue', () => {
 		expect(getByTestId('stop-execution')).toBeDisabled();
 	});
 
-	describe('test execution crud', () => {
-		it('should add an execution to a testcase', async () => {
-			const tag = { id: 'tag_id', name: 'tag_name' };
-			const execution = executionDataFactory([]);
-			const testCase = testCaseFactory(execution.workflowId, tag.id);
-
-			const testDefinitionStore = mockedStore(useTestDefinitionStore);
-			const executionsStore = mockedStore(useExecutionsStore);
-			const settingsStore = mockedStore(useSettingsStore);
-
-			testDefinitionStore.allTestDefinitionsByWorkflowId[execution.workflowId] = [testCase];
-
-			settingsStore.isEnterpriseFeatureEnabled = {
-				advancedExecutionFilters: true,
-			} as FrontendSettings['enterprise'];
-
-			const { getByTestId } = renderComponent({
-				props: { execution: { ...execution, status: 'success' } },
-			});
-
-			await router.push({ params: { name: execution.workflowId }, query: { testId: testCase.id } });
-
-			expect(getByTestId('test-execution-crud')).toBeInTheDocument();
-			expect(getByTestId('test-execution-add')).toBeVisible();
-
-			await userEvent.click(getByTestId('test-execution-add'));
-
-			expect(executionsStore.annotateExecution).toHaveBeenCalledWith(execution.id, {
-				tags: [testCase.annotationTagId],
-			});
-
-			expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
+	it('should display vote buttons when annotation is enabled', async () => {
+		// Set up the test with annotation enabled
+		const pinia = createTestingPinia({
+			initialState: {
+				[STORES.SETTINGS]: {
+					settings: {
+						enterprise: {
+							[EnterpriseEditionFeature.AdvancedExecutionFilters]: true,
+						},
+					},
+				},
+				[STORES.EXECUTIONS]: {
+					activeExecution: executionData,
+				},
+			},
 		});
 
-		it('should remove an execution from a testcase', async () => {
-			const tag = { id: 'tag_id', name: 'tag_name' };
-			const execution = executionDataFactory([tag]);
-			const testCase = testCaseFactory(execution.workflowId, tag.id);
+		const { getByTestId } = renderComponent({
+			props: { execution: executionData },
+			pinia,
+		});
 
-			const testDefinitionStore = mockedStore(useTestDefinitionStore);
-			const executionsStore = mockedStore(useExecutionsStore);
-			const settingsStore = mockedStore(useSettingsStore);
+		await nextTick();
 
-			testDefinitionStore.allTestDefinitionsByWorkflowId[execution.workflowId] = [testCase];
+		// Should show vote buttons container
+		const voteButtons = getByTestId('execution-preview-vote-buttons');
+		expect(voteButtons).toBeInTheDocument();
 
-			settingsStore.isEnterpriseFeatureEnabled = {
-				advancedExecutionFilters: true,
-			} as FrontendSettings['enterprise'];
+		// Should contain two button elements (thumbs up and thumbs down)
+		const buttons = voteButtons.querySelectorAll('button');
+		expect(buttons).toHaveLength(2);
+	});
 
-			const { getByTestId } = renderComponent({
-				props: { execution: { ...execution, status: 'success' } },
-			});
-
-			await router.push({ params: { name: execution.workflowId }, query: { testId: testCase.id } });
-
-			expect(getByTestId('test-execution-crud')).toBeInTheDocument();
-			expect(getByTestId('test-execution-remove')).toBeVisible();
-
-			await userEvent.click(getByTestId('test-execution-remove'));
-
-			expect(executionsStore.annotateExecution).toHaveBeenCalledWith(execution.id, {
+	it('should show active vote state', async () => {
+		const executionWithUpVote = {
+			...executionData,
+			annotation: {
 				tags: [],
-			});
+				vote: 'up' as AnnotationVote,
+			},
+		};
 
-			expect(showMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
+		// Set up the test with an up vote
+		const pinia = createTestingPinia({
+			initialState: {
+				[STORES.SETTINGS]: {
+					settings: {
+						enterprise: {
+							[EnterpriseEditionFeature.AdvancedExecutionFilters]: true,
+						},
+					},
+				},
+				[STORES.EXECUTIONS]: {
+					activeExecution: executionWithUpVote,
+				},
+			},
 		});
 
-		it('should toggle an execution', async () => {
-			const tag1 = { id: 'tag_id', name: 'tag_name' };
-			const tag2 = { id: 'tag_id_2', name: 'tag_name_2' };
-			const execution = executionDataFactory([tag1]);
-			const testCase1 = testCaseFactory(execution.workflowId, tag1.id);
-			const testCase2 = testCaseFactory(execution.workflowId, tag2.id);
-
-			const testDefinitionStore = mockedStore(useTestDefinitionStore);
-			const executionsStore = mockedStore(useExecutionsStore);
-			const settingsStore = mockedStore(useSettingsStore);
-
-			testDefinitionStore.allTestDefinitionsByWorkflowId[execution.workflowId] = [
-				testCase1,
-				testCase2,
-			];
-
-			settingsStore.isEnterpriseFeatureEnabled = {
-				advancedExecutionFilters: true,
-			} as FrontendSettings['enterprise'];
-
-			const { getByTestId, queryAllByTestId, rerender } = renderComponent({
-				props: { execution: { ...execution, status: 'success' } },
-			});
-
-			await router.push({ params: { name: execution.workflowId } });
-
-			expect(getByTestId('test-execution-crud')).toBeInTheDocument();
-			expect(getByTestId('test-execution-toggle')).toBeVisible();
-
-			// add
-			await userEvent.click(getByTestId('test-execution-toggle'));
-			await userEvent.click(queryAllByTestId('test-execution-add-to')[1]);
-			expect(executionsStore.annotateExecution).toHaveBeenCalledWith(execution.id, {
-				tags: [tag1.id, tag2.id],
-			});
-
-			const executionWithBothTags = executionDataFactory([tag1, tag2]);
-			await rerender({ execution: { ...executionWithBothTags, status: 'success' } });
-
-			// remove
-			await userEvent.click(getByTestId('test-execution-toggle'));
-			await userEvent.click(queryAllByTestId('test-execution-add-to')[1]);
-			expect(executionsStore.annotateExecution).toHaveBeenLastCalledWith(executionWithBothTags.id, {
-				tags: [tag1.id],
-			});
+		const { getByTestId } = renderComponent({
+			props: { execution: executionWithUpVote },
+			pinia,
 		});
+
+		await nextTick();
+
+		const voteButtons = getByTestId('execution-preview-vote-buttons');
+		expect(voteButtons).toBeInTheDocument();
+
+		// Should have two buttons for voting
+		const buttons = voteButtons.querySelectorAll('button');
+		expect(buttons).toHaveLength(2);
+	});
+
+	it('should display highlighted data dropdown when custom data exists', async () => {
+		const executionWithCustomData = {
+			...executionData,
+			customData: { key1: 'value1', key2: 'value2' },
+		};
+
+		// Set up the test with custom data
+		const pinia = createTestingPinia({
+			initialState: {
+				[STORES.SETTINGS]: {
+					settings: {
+						enterprise: {
+							[EnterpriseEditionFeature.AdvancedExecutionFilters]: true,
+						},
+					},
+				},
+				[STORES.EXECUTIONS]: {
+					activeExecution: executionWithCustomData,
+				},
+			},
+		});
+
+		const { getByTestId } = renderComponent({
+			props: { execution: executionWithCustomData },
+			pinia,
+		});
+
+		await nextTick();
+
+		const ellipsisButton = getByTestId('execution-preview-ellipsis-button');
+		expect(ellipsisButton).toBeInTheDocument();
+
+		// Should show badge with custom data count
+		const badge = ellipsisButton.querySelector('.badge');
+		expect(badge).toBeInTheDocument();
+		expect(badge?.textContent).toBe('2');
+	});
+
+	it('should not show badge when no custom data exists', async () => {
+		// Set up the test without custom data
+		const pinia = createTestingPinia({
+			initialState: {
+				[STORES.SETTINGS]: {
+					settings: {
+						enterprise: {
+							[EnterpriseEditionFeature.AdvancedExecutionFilters]: true,
+						},
+					},
+				},
+				[STORES.EXECUTIONS]: {
+					activeExecution: executionData,
+				},
+			},
+		});
+
+		const { getByTestId } = renderComponent({
+			props: { execution: executionData },
+			pinia,
+		});
+
+		await nextTick();
+
+		const ellipsisButton = getByTestId('execution-preview-ellipsis-button');
+		expect(ellipsisButton).toBeInTheDocument();
+
+		// Should not show badge when no custom data
+		const badge = ellipsisButton.querySelector('.badge');
+		expect(badge).not.toBeInTheDocument();
+	});
+
+	it('should not show vote buttons when annotation is disabled', async () => {
+		const settingsStore = mockedStore(useSettingsStore);
+		settingsStore.settings.enterprise = {
+			...settingsStore.settings.enterprise,
+			[EnterpriseEditionFeature.AdvancedExecutionFilters]: false,
+		} as FrontendSettings['enterprise'];
+
+		const { queryByTestId } = renderComponent({
+			props: { execution: executionData },
+		});
+
+		await nextTick();
+
+		// Should not show vote buttons when annotation is disabled
+		expect(queryByTestId('execution-preview-vote-buttons')).not.toBeInTheDocument();
+	});
+
+	it('should not show annotation features when annotation is disabled', async () => {
+		const settingsStore = mockedStore(useSettingsStore);
+		settingsStore.settings.enterprise = {
+			...settingsStore.settings.enterprise,
+			[EnterpriseEditionFeature.AdvancedExecutionFilters]: false,
+		} as FrontendSettings['enterprise'];
+
+		const { queryByTestId } = renderComponent({
+			props: { execution: executionData },
+		});
+
+		await nextTick();
+
+		// Should not show annotation-related elements
+		expect(queryByTestId('annotation-tags-container')).not.toBeInTheDocument();
+		expect(queryByTestId('execution-preview-ellipsis-button')).not.toBeInTheDocument();
 	});
 });

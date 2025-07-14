@@ -8,7 +8,7 @@ import type {
 	ISupplyDataFunctions,
 	SupplyData,
 } from 'n8n-workflow';
-import { NodeConnectionTypes } from 'n8n-workflow';
+import { NodeConnectionTypes, nodeNameToToolName } from 'n8n-workflow';
 
 import { logWrapper } from '@utils/logWrapper';
 import { getConnectionHintNoticeField } from '@utils/sharedFields';
@@ -20,7 +20,7 @@ export class ToolVectorStore implements INodeType {
 		icon: 'fa:database',
 		iconColor: 'black',
 		group: ['transform'],
-		version: [1],
+		version: [1, 1.1],
 		description: 'Answer questions with a vector store',
 		defaults: {
 			name: 'Answer questions with a vector store',
@@ -39,7 +39,7 @@ export class ToolVectorStore implements INodeType {
 				],
 			},
 		},
-		// eslint-disable-next-line n8n-nodes-base/node-class-description-inputs-wrong-regular-node
+
 		inputs: [
 			{
 				displayName: 'Vector Store',
@@ -54,7 +54,7 @@ export class ToolVectorStore implements INodeType {
 				required: true,
 			},
 		],
-		// eslint-disable-next-line n8n-nodes-base/node-class-description-outputs-wrong
+
 		outputs: [NodeConnectionTypes.AiTool],
 		outputNames: ['Tool'],
 		properties: [
@@ -68,6 +68,11 @@ export class ToolVectorStore implements INodeType {
 				validateType: 'string-alphanumeric',
 				description:
 					'Name of the data in vector store. This will be used to fill this tool description: Useful for when you need to answer questions about [name]. Whenever you need information about [data description], you should ALWAYS use this. Input should be a fully formed question.',
+				displayOptions: {
+					show: {
+						'@version': [1],
+					},
+				},
 			},
 			{
 				displayName: 'Description of Data',
@@ -92,7 +97,12 @@ export class ToolVectorStore implements INodeType {
 	};
 
 	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
-		const name = this.getNodeParameter('name', itemIndex) as string;
+		const node = this.getNode();
+		const { typeVersion } = node;
+		const name =
+			typeVersion <= 1
+				? (this.getNodeParameter('name', itemIndex) as string)
+				: nodeNameToToolName(node);
 		const toolDescription = this.getNodeParameter('description', itemIndex) as string;
 		const topK = this.getNodeParameter('topK', itemIndex, 4) as number;
 

@@ -7,7 +7,7 @@ import {
 	type NodeTypeAndVersion,
 } from 'n8n-workflow';
 
-import { renderFormNode } from '../formNodeUtils';
+import { renderFormNode } from '../utils/formNodeUtils';
 
 describe('formNodeUtils', () => {
 	let webhookFunctions: MockProxy<IWebhookFunctions>;
@@ -117,7 +117,6 @@ describe('formNodeUtils', () => {
 			n8nWebsiteLink: 'https://n8n.io/?utm_source=n8n-internal&utm_medium=form-trigger',
 			testRun: true,
 			useResponseData: true,
-			validForm: true,
 		});
 	});
 });

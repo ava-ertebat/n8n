@@ -6,10 +6,11 @@ import type { INodeTypeDescription, NodeConnectionType, NodeError } from 'n8n-wo
 import { computed } from 'vue';
 import NodeIcon from '@/components/NodeIcon.vue';
 import AiRunContentBlock from './AiRunContentBlock.vue';
-import { useExecutionHelpers } from '@/composables/useExecutionHelpers';
-import { useI18n } from '@/composables/useI18n';
-import { formatTokenUsageCount, getConsumedTokens } from '@/components/RunDataAi/utils';
+import { useI18n } from '@n8n/i18n';
+import { getConsumedTokens } from '@/components/RunDataAi/utils';
 import ConsumedTokensDetails from '@/components/ConsumedTokensDetails.vue';
+import ViewSubExecution from '../ViewSubExecution.vue';
+import { formatTokenUsageCount } from '@/utils/aiUtils';
 
 interface RunMeta {
 	startTimeMs: number;
@@ -30,7 +31,6 @@ const props = defineProps<{
 const nodeTypesStore = useNodeTypesStore();
 const workflowsStore = useWorkflowsStore();
 
-const { trackOpeningRelatedExecution, resolveRelatedExecutionUrl } = useExecutionHelpers();
 const i18n = useI18n();
 
 const consumedTokensSum = computed(() => {
@@ -105,15 +105,8 @@ const outputError = computed(() => {
 							}}
 						</n8n-tooltip>
 					</li>
-					<li v-if="runMeta?.subExecution">
-						<a
-							:href="resolveRelatedExecutionUrl(runMeta)"
-							target="_blank"
-							@click.stop="trackOpeningRelatedExecution(runMeta, 'ai')"
-						>
-							<N8nIcon icon="external-link-alt" size="xsmall" />
-							{{ i18n.baseText('runData.openSubExecutionSingle') }}
-						</a>
+					<li v-if="runMeta">
+						<ViewSubExecution :task-metadata="runMeta" :display-mode="'ai'" :inline="true" />
 					</li>
 					<li v-if="(consumedTokensSum?.totalTokens ?? 0) > 0" :class="$style.tokensUsage">
 						{{

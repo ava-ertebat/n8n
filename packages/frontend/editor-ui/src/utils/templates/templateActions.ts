@@ -1,13 +1,9 @@
-import type {
-	INodeUi,
-	ITemplatesWorkflowFull,
-	IWorkflowData,
-	IWorkflowTemplate,
-} from '@/Interface';
+import type { INodeUi } from '@/Interface';
+import type { ITemplatesWorkflowFull, IWorkflowTemplate } from '@n8n/rest-api-client/api/templates';
+import type { WorkflowData } from '@n8n/rest-api-client/api/workflows';
 import { getNewWorkflow } from '@/api/workflows';
-import { TEMPLATE_CREDENTIAL_SETUP_EXPERIMENT, VIEWS } from '@/constants';
-import type { useRootStore } from '@/stores/root.store';
-import type { PosthogStore } from '@/stores/posthog.store';
+import { VIEWS } from '@/constants';
+import type { useRootStore } from '@n8n/stores/useRootStore';
 import type { useWorkflowsStore } from '@/stores/workflows.store';
 import { getNodesWithNormalizedPosition } from '@/utils/nodeViewUtils';
 import type { NodeTypeProvider } from '@/utils/nodeTypes/nodeTypeTransforms';
@@ -46,7 +42,7 @@ export async function createWorkflowFromTemplate(opts: {
 	const nodes = getNodesWithNormalizedPosition(nodesWithCreds) as INodeUi[];
 	const connections = template.workflow.connections;
 
-	const workflowToCreate: IWorkflowData = {
+	const workflowToCreate: WorkflowData = {
 		name: workflowData.name,
 		nodes,
 		connections,
@@ -74,7 +70,7 @@ async function openTemplateCredentialSetup(opts: {
 }) {
 	const { router, templateId, inNewBrowserTab = false, telemetry, source } = opts;
 
-	telemetry.track('User opened cred setup', { source }, { withPostHog: true });
+	telemetry.track('User opened cred setup', { source });
 
 	const routeLocation: RouteLocationRaw = {
 		name: VIEWS.TEMPLATE_SETUP,
@@ -147,7 +143,6 @@ async function getFullTemplate(templatesStore: TemplatesStore, templateId: strin
 export async function useTemplateWorkflow(opts: {
 	externalHooks: ExternalHooks;
 	nodeTypesStore: NodeTypesStore;
-	posthogStore: PosthogStore;
 	templateId: string;
 	templatesStore: TemplatesStore;
 	router: Router;
@@ -155,13 +150,7 @@ export async function useTemplateWorkflow(opts: {
 	telemetry: Telemetry;
 	source: string;
 }) {
-	const { nodeTypesStore, posthogStore, templateId, templatesStore } = opts;
-
-	const openCredentialSetup = posthogStore.isFeatureEnabled(TEMPLATE_CREDENTIAL_SETUP_EXPERIMENT);
-	if (!openCredentialSetup) {
-		await openTemplateWorkflowOnNodeView(opts);
-		return;
-	}
+	const { nodeTypesStore, templateId, templatesStore } = opts;
 
 	const [template] = await Promise.all([
 		getFullTemplate(templatesStore, templateId),

@@ -2,9 +2,9 @@
 import AnimatedSpinner from '@/components/AnimatedSpinner.vue';
 import ExecutionsTime from '@/components/executions/ExecutionsTime.vue';
 import { useExecutionHelpers } from '@/composables/useExecutionHelpers';
-import { useI18n } from '@/composables/useI18n';
+import { useI18n } from '@n8n/i18n';
 import { VIEWS } from '@/constants';
-import type { PermissionsRecord } from '@/permissions';
+import type { PermissionsRecord } from '@n8n/permissions';
 import { convertToDisplayDate } from '@/utils/formatters/dateFormatter';
 import {
 	N8nButton,
@@ -18,6 +18,7 @@ import type { IconColor } from '@n8n/design-system/types/icon';
 import type { ExecutionStatus, ExecutionSummary } from 'n8n-workflow';
 import { WAIT_INDEFINITELY } from 'n8n-workflow';
 import { computed, ref, useCssModule } from 'vue';
+import { type IconName } from '@n8n/design-system/components/N8nIcon/icons';
 
 type Command = 'retrySaved' | 'retryOriginal' | 'delete';
 
@@ -74,40 +75,41 @@ const EXECUTION_STATUS = {
 	CANCELED: 'canceled',
 } as const;
 
-const executionIconStatusDictionary: Record<ExecutionStatus, { icon: string; color: IconColor }> = {
-	[EXECUTION_STATUS.CRASHED]: {
-		icon: 'status-error',
-		color: 'danger',
-	},
-	[EXECUTION_STATUS.ERROR]: {
-		icon: 'status-error',
-		color: 'danger',
-	},
-	[EXECUTION_STATUS.WAITING]: {
-		icon: 'status-waiting',
-		color: 'secondary',
-	},
-	[EXECUTION_STATUS.SUCCESS]: {
-		icon: 'status-completed',
-		color: 'success',
-	},
-	[EXECUTION_STATUS.NEW]: {
-		icon: 'status-new',
-		color: 'foreground-xdark',
-	},
-	[EXECUTION_STATUS.RUNNING]: {
-		icon: 'spinner',
-		color: 'secondary',
-	},
-	[EXECUTION_STATUS.UNKNOWN]: {
-		icon: 'status-unknown',
-		color: 'foreground-xdark',
-	},
-	[EXECUTION_STATUS.CANCELED]: {
-		icon: 'status-canceled',
-		color: 'foreground-xdark',
-	},
-};
+const executionIconStatusDictionary: Record<ExecutionStatus, { icon: IconName; color: IconColor }> =
+	{
+		[EXECUTION_STATUS.CRASHED]: {
+			icon: 'status-error',
+			color: 'danger',
+		},
+		[EXECUTION_STATUS.ERROR]: {
+			icon: 'status-error',
+			color: 'danger',
+		},
+		[EXECUTION_STATUS.WAITING]: {
+			icon: 'status-waiting',
+			color: 'secondary',
+		},
+		[EXECUTION_STATUS.SUCCESS]: {
+			icon: 'status-completed',
+			color: 'success',
+		},
+		[EXECUTION_STATUS.NEW]: {
+			icon: 'status-new',
+			color: 'foreground-xdark',
+		},
+		[EXECUTION_STATUS.RUNNING]: {
+			icon: 'spinner',
+			color: 'secondary',
+		},
+		[EXECUTION_STATUS.UNKNOWN]: {
+			icon: 'status-unknown',
+			color: 'foreground-xdark',
+		},
+		[EXECUTION_STATUS.CANCELED]: {
+			icon: 'status-canceled',
+			color: 'foreground-xdark',
+		},
+	};
 
 const errorStatuses: ExecutionStatus[] = [EXECUTION_STATUS.ERROR, EXECUTION_STATUS.CRASHED];
 const classes = computed(() => {
@@ -130,7 +132,7 @@ const formattedStoppedAtDate = computed(() => {
 	return props.execution.stoppedAt
 		? locale.displayTimer(
 				new Date(props.execution.stoppedAt).getTime() -
-					new Date(props.execution.startedAt).getTime(),
+					new Date(props.execution.startedAt ?? props.execution.createdAt).getTime(),
 				true,
 			)
 		: '';
@@ -176,21 +178,24 @@ async function handleActionItemClick(commandData: Command) {
 				:model-value="selected"
 				data-test-id="select-execution-checkbox"
 				:disabled="!Boolean(execution.id && execution.stoppedAt)"
+				class="mb-0"
+				:style="{ marginTop: '-3px' }"
 				@update:model-value="onSelect"
 			/>
 		</td>
 		<td>
-			<RouterLink
-				:to="{
-					name: VIEWS.EXECUTION_PREVIEW,
-					params: { name: execution.workflowId, executionId: execution.id },
-				}"
-				target="_blank"
-			>
-				<N8nText color="text-dark">
+			<N8nTooltip :content="execution.workflowName || workflowName" placement="top">
+				<RouterLink
+					:to="{
+						name: VIEWS.EXECUTION_PREVIEW,
+						params: { name: execution.workflowId, executionId: execution.id },
+					}"
+					:class="$style.workflowName"
+					target="_blank"
+				>
 					{{ execution.workflowName || workflowName }}
-				</N8nText>
-			</RouterLink>
+				</RouterLink>
+			</N8nTooltip>
 		</td>
 		<td data-test-id="execution-status">
 			<GlobalExecutionsListItemQueuedTooltip
@@ -222,7 +227,13 @@ async function handleActionItemClick(commandData: Command) {
 					>
 						<AnimatedSpinner />
 					</N8nText>
-					<N8nIcon v-else :icon="statusRender.icon" :color="statusRender.color" class="mr-2xs" />
+					<N8nIcon
+						v-else
+						size="medium"
+						:icon="statusRender.icon"
+						:color="statusRender.color"
+						class="mr-2xs"
+					/>
 					{{ statusRender.label }}
 				</div>
 			</N8nTooltip>
@@ -230,11 +241,11 @@ async function handleActionItemClick(commandData: Command) {
 		<td>
 			{{ formattedStartedAtDate }}
 		</td>
-		<td>
+		<td data-test-id="execution-time">
 			<template v-if="formattedStoppedAtDate">
 				{{ formattedStoppedAtDate }}
 			</template>
-			<ExecutionsTime v-else :start-time="execution.startedAt" />
+			<ExecutionsTime v-else :start-time="execution.startedAt ?? execution.createdAt" />
 		</td>
 		<td>
 			<span v-if="execution.id">{{ execution.id }}</span>
@@ -250,12 +261,13 @@ async function handleActionItemClick(commandData: Command) {
 			</span>
 		</td>
 		<td>
-			<span :class="$style.capitalize">{{ execution.mode }}</span>
+			<N8nIcon v-if="execution.mode === 'manual'" icon="flask-conical" />
 		</td>
 		<td>
 			<N8nButton
 				v-if="!execution.stoppedAt || execution.waitTill"
 				data-test-id="stop-execution-button"
+				type="secondary"
 				:loading="isStopping"
 				:disabled="isStopping"
 				@click.stop="onStopExecution"
@@ -265,7 +277,7 @@ async function handleActionItemClick(commandData: Command) {
 		</td>
 		<td>
 			<ElDropdown v-if="!isRunning" trigger="click" @command="handleActionItemClick">
-				<N8nIconButton text type="tertiary" size="mini" icon="ellipsis-v" />
+				<N8nIconButton text type="tertiary" icon="ellipsis-vertical" />
 				<template #dropdown>
 					<ElDropdownMenu
 						:class="{
@@ -311,7 +323,15 @@ tr.dangerBg {
 	background-color: rgba(215, 56, 58, 0.1);
 }
 
-.capitalize {
-	text-transform: capitalize;
+.workflowName {
+	display: inline-block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	line-height: 1.2;
+	max-width: 100%;
+	color: var(--color-text-dark);
+	font-size: var(--font-size-s);
+	line-height: var(--font-line-height-loose);
+	max-width: 450px;
 }
 </style>

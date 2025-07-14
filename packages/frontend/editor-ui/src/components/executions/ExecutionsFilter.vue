@@ -1,20 +1,20 @@
 <script lang="ts" setup>
-import { computed, reactive, onBeforeMount, ref } from 'vue';
-import type {
-	ExecutionFilterType,
-	ExecutionFilterMetadata,
-	IWorkflowShortResponse,
-	IWorkflowDb,
-} from '@/Interface';
-import { i18n as locale } from '@/plugins/i18n';
-import { getObjectKeys, isEmpty } from '@/utils/typesUtils';
-import { EnterpriseEditionFeature } from '@/constants';
-import { useSettingsStore } from '@/stores/settings.store';
-import { useTelemetry } from '@/composables/useTelemetry';
-import type { Placement } from '@floating-ui/core';
-import { useDebounce } from '@/composables/useDebounce';
 import AnnotationTagsDropdown from '@/components/AnnotationTagsDropdown.ee.vue';
+import { useDebounce } from '@/composables/useDebounce';
 import { usePageRedirectionHelper } from '@/composables/usePageRedirectionHelper';
+import { useTelemetry } from '@/composables/useTelemetry';
+import { EnterpriseEditionFeature } from '@/constants';
+import type {
+	ExecutionFilterMetadata,
+	ExecutionFilterType,
+	IWorkflowDb,
+	IWorkflowShortResponse,
+} from '@/Interface';
+import { i18n as locale } from '@n8n/i18n';
+import { useSettingsStore } from '@/stores/settings.store';
+import { getObjectKeys, isEmpty } from '@/utils/typesUtils';
+import type { Placement } from '@floating-ui/core';
+import { computed, onBeforeMount, reactive, ref } from 'vue';
 
 export type ExecutionFilterProps = {
 	workflows?: Array<IWorkflowDb | IWorkflowShortResponse>;
@@ -56,7 +56,7 @@ const getDefaultFilter = (): ExecutionFilterType => ({
 	annotationTags: [],
 	startDate: '',
 	endDate: '',
-	metadata: [{ key: '', value: '' }],
+	metadata: [{ key: '', value: '', exactMatch: false }],
 	vote: 'all',
 });
 const filter = reactive(getDefaultFilter());
@@ -116,11 +116,16 @@ const countSelectedFilterProps = computed(() => {
 
 // vModel.metadata is a text input and needs a debounced emit to avoid too many requests
 // We use the :value and @input combo instead of v-model with this event listener
-const onFilterMetaChange = (index: number, prop: keyof ExecutionFilterMetadata, value: string) => {
+const onFilterMetaChange = <K extends keyof ExecutionFilterMetadata>(
+	index: number,
+	prop: K,
+	value: ExecutionFilterMetadata[K],
+) => {
 	if (!filter.metadata[index]) {
 		filter.metadata[index] = {
 			key: '',
 			value: '',
+			exactMatch: false,
 		};
 	}
 	filter.metadata[index][prop] = value;
@@ -152,6 +157,12 @@ const goToUpgrade = () => {
 	void pageRedirectionHelper.goToUpgrade('custom-data-filter', 'upgrade-custom-data-filter');
 };
 
+const onExactMatchChange = (e: string | number | boolean) => {
+	if (typeof e === 'boolean') {
+		onFilterMetaChange(0, 'exactMatch', e);
+	}
+};
+
 onBeforeMount(() => {
 	isCustomDataFilterTracked.value = false;
 });
@@ -160,19 +171,24 @@ onBeforeMount(() => {
 	<n8n-popover trigger="click" :placement="popoverPlacement" width="440">
 		<template #reference>
 			<n8n-button
-				icon="filter"
+				icon="funnel"
 				type="tertiary"
+				size="medium"
+				square
 				:active="!!countSelectedFilterProps"
 				data-test-id="executions-filter-button"
+				:class="$style.filterButton"
 			>
-				<n8n-badge
-					v-if="!!countSelectedFilterProps"
-					theme="primary"
-					class="mr-4xs"
-					data-test-id="execution-filter-badge"
-					>{{ countSelectedFilterProps }}</n8n-badge
-				>
-				{{ locale.baseText('executionsList.filters') }}
+				<template v-if="!!countSelectedFilterProps" #default>
+					<n8n-badge
+						theme="primary"
+						class="mr-4xs"
+						data-test-id="execution-filter-badge"
+						:class="$style.filterBadge"
+					>
+						{{ countSelectedFilterProps }}
+					</n8n-badge>
+				</template>
 			</n8n-button>
 		</template>
 		<div data-test-id="execution-filter-form">
@@ -289,9 +305,9 @@ onBeforeMount(() => {
 					<template #content>
 						<i18n-t tag="span" keypath="executionsFilter.customData.docsTooltip" />
 					</template>
-					<span :class="$style.label">
-						{{ locale.baseText('executionsFilter.savedData') }}
-						<n8n-icon :class="$style.tooltipIcon" icon="question-circle" size="small" />
+					<span :class="[$style.label, $style.savedDataLabel]">
+						<span>{{ locale.baseText('executionsFilter.savedData') }}</span>
+						<n8n-icon :class="$style.tooltipIcon" icon="circle-help" size="medium" />
 					</span>
 				</n8n-tooltip>
 				<div :class="$style.subGroup">
@@ -322,6 +338,26 @@ onBeforeMount(() => {
 							@update:model-value="onFilterMetaChange(0, 'key', $event)"
 						/>
 					</n8n-tooltip>
+					<div :class="$style.checkboxWrapper">
+						<n8n-tooltip :disabled="isAdvancedExecutionFilterEnabled" placement="top">
+							<template #content>
+								<i18n-t tag="span" keypath="executionsFilter.customData.inputTooltip">
+									<template #link>
+										<a href="#" @click.prevent="goToUpgrade">{{
+											locale.baseText('executionsFilter.customData.inputTooltip.link')
+										}}</a>
+									</template>
+								</i18n-t>
+							</template>
+							<n8n-checkbox
+								:label="locale.baseText('executionsFilter.savedDataExactMatch')"
+								:model-value="filter.metadata[0]?.exactMatch"
+								:disabled="!isAdvancedExecutionFilterEnabled"
+								data-test-id="execution-filter-saved-data-exact-match-checkbox"
+								@update:model-value="onExactMatchChange"
+							/>
+						</n8n-tooltip>
+					</div>
 					<label for="execution-filter-saved-data-value">{{
 						locale.baseText('executionsFilter.savedDataValue')
 					}}</label>
@@ -368,6 +404,15 @@ onBeforeMount(() => {
 		display: inline-block;
 		font-size: var(--font-size-2xs);
 		margin: var(--spacing-s) 0 var(--spacing-3xs);
+		color: var(--color-text-dark);
+	}
+}
+
+.label.savedDataLabel {
+	display: flex;
+	align-items: center;
+	span {
+		margin-right: var(--spacing-3xs);
 	}
 }
 
@@ -378,6 +423,15 @@ onBeforeMount(() => {
 	.label {
 		font-size: var(--font-size-3xs);
 		margin: var(--spacing-4xs) 0 var(--spacing-4xs);
+	}
+
+	.checkboxWrapper {
+		margin-top: var(--spacing-s);
+		margin-bottom: var(--spacing-2xs);
+
+		label {
+			margin: 0;
+		}
 	}
 }
 
@@ -401,6 +455,17 @@ onBeforeMount(() => {
 
 .tooltipIcon {
 	color: var(--color-text-light);
+}
+
+.filterButton {
+	position: relative;
+
+	.filterBadge {
+		position: absolute;
+		top: 0;
+		right: -4px;
+		transform: translate(50%, -50%);
+	}
 }
 </style>
 

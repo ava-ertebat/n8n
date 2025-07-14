@@ -1,6 +1,10 @@
 import { DateTime, Duration, Interval } from 'luxon';
-import type { IBinaryData } from 'n8n-workflow';
-import { setGlobalState, type CodeExecutionMode, type IDataObject } from 'n8n-workflow';
+import {
+	type IBinaryData,
+	setGlobalState,
+	type CodeExecutionMode,
+	type IDataObject,
+} from 'n8n-workflow';
 import fs from 'node:fs';
 import { builtinModules } from 'node:module';
 
@@ -26,10 +30,16 @@ import {
 	withPairedItem,
 	wrapIntoJson,
 } from './test-data';
+import { ReservedKeyFoundError } from '../errors/reserved-key-not-found.error';
 
 jest.mock('ws');
 
 const defaultConfig = new MainConfig();
+defaultConfig.jsRunnerConfig ??= {
+	allowedBuiltInModules: '',
+	allowedExternalModules: '',
+	insecureMode: false,
+};
 
 describe('JsTaskRunner', () => {
 	const createRunnerWithOpts = (
@@ -800,6 +810,15 @@ describe('JsTaskRunner', () => {
 					}),
 				).rejects.toThrow(ValidationError);
 			});
+
+			it('should throw a ReservedKeyFoundError if there are unknown keys alongside reserved keys', async () => {
+				await expect(
+					executeForAllItems({
+						code: 'return [{json: {b: 1}, objectId: "123"}]',
+						inputItems: [{ a: 1 }],
+					}),
+				).rejects.toThrow(ReservedKeyFoundError);
+			});
 		});
 
 		it('should return static items', async () => {
@@ -1435,6 +1454,31 @@ describe('JsTaskRunner', () => {
 			// @ts-expect-error Non-existing property
 			expect(Duration.fromObject({ hours: 1 }).maliciousKey).toBeUndefined();
 		});
+
+		it('should allow prototype mutation when `insecureMode` is true', async () => {
+			const runner = createRunnerWithOpts({
+				insecureMode: true,
+			});
+
+			const outcome = await executeForAllItems({
+				code: `
+					const obj = {};
+
+					Object.prototype.maliciousProperty = 'compromised';
+
+					return [{ json: {
+						prototypeMutated: obj.maliciousProperty === 'compromised'
+					}}];
+				`,
+				inputItems: [{ a: 1 }],
+				runner,
+			});
+
+			expect(outcome.result).toEqual([wrapIntoJson({ prototypeMutated: true })]);
+
+			// @ts-expect-error Non-existing property
+			delete Object.prototype.maliciousProperty;
+		});
 	});
 
 	describe('stack trace', () => {
@@ -1472,6 +1516,17 @@ describe('JsTaskRunner', () => {
 					lineNumber: 2, // from user-defined function
 				},
 			});
+		});
+	});
+
+	describe('expressions', () => {
+		it('should evaluate expressions with $evaluateExpression', async () => {
+			const outcome = await executeForAllItems({
+				code: "return { val: $evaluateExpression('{{ 1 + 1 }}') }",
+				inputItems: [],
+			});
+
+			expect(outcome.result).toEqual([wrapIntoJson({ val: 2 })]);
 		});
 	});
 });

@@ -1,23 +1,22 @@
 <script lang="ts" setup>
 import WorkflowExecutionAnnotationPanel from '@/components/executions/workflow/WorkflowExecutionAnnotationPanel.ee.vue';
+import WorkflowExecutionAnnotationTags from '@/components/executions/workflow/WorkflowExecutionAnnotationTags.ee.vue';
 import WorkflowPreview from '@/components/WorkflowPreview.vue';
 import { useExecutionDebugging } from '@/composables/useExecutionDebugging';
 import type { IExecutionUIData } from '@/composables/useExecutionHelpers';
 import { useExecutionHelpers } from '@/composables/useExecutionHelpers';
-import { useI18n } from '@/composables/useI18n';
-import { useMessage } from '@/composables/useMessage';
+import { useI18n } from '@n8n/i18n';
 import { useToast } from '@/composables/useToast';
+import { useMessage } from '@/composables/useMessage';
 import { EnterpriseEditionFeature, MODAL_CONFIRM, VIEWS } from '@/constants';
-import { getResourcePermissions } from '@/permissions';
-import { useExecutionsStore } from '@/stores/executions.store';
+import { getResourcePermissions } from '@n8n/permissions';
 import { useSettingsStore } from '@/stores/settings.store';
-import { useTestDefinitionStore } from '@/stores/testDefinition.store.ee';
 import { useWorkflowsStore } from '@/stores/workflows.store';
 import { ElDropdown, ElDropdownItem, ElDropdownMenu } from 'element-plus';
-import { N8nButton, N8nIcon, N8nIconButton, N8nText, N8nTooltip } from '@n8n/design-system';
-import type { ExecutionSummary } from 'n8n-workflow';
-import { computed, h, onMounted, ref } from 'vue';
-import { RouterLink, useRoute, useRouter } from 'vue-router';
+import type { AnnotationVote, ExecutionSummary } from 'n8n-workflow';
+import { computed, ref } from 'vue';
+import { RouterLink, useRoute } from 'vue-router';
+import { useExecutionsStore } from '@/stores/executions.store';
 
 type RetryDropdownRef = InstanceType<typeof ElDropdown>;
 
@@ -32,23 +31,21 @@ const emit = defineEmits<{
 }>();
 
 const route = useRoute();
-const router = useRouter();
 const locale = useI18n();
+const { showError } = useToast();
 
 const executionHelpers = useExecutionHelpers();
 const message = useMessage();
-const toast = useToast();
 const executionDebugging = useExecutionDebugging();
 const workflowsStore = useWorkflowsStore();
 const settingsStore = useSettingsStore();
-const testDefinitionStore = useTestDefinitionStore();
-const executionsStore = useExecutionsStore();
 const retryDropdownRef = ref<RetryDropdownRef | null>(null);
 const workflowId = computed(() => route.params.name as string);
 const workflowPermissions = computed(
 	() => getResourcePermissions(workflowsStore.getWorkflowById(workflowId.value)?.scopes).workflow,
 );
 const executionId = computed(() => route.params.executionId as string);
+const nodeId = computed(() => route.params.nodeId as string);
 const executionUIDetails = computed<IExecutionUIData | null>(() =>
 	props.execution ? executionHelpers.getUIDetails(props.execution) : null,
 );
@@ -77,116 +74,15 @@ const hasAnnotation = computed(
 		(props.execution?.annotation.vote || props.execution?.annotation.tags.length > 0),
 );
 
-const testDefinitions = computed(
-	() => testDefinitionStore.allTestDefinitionsByWorkflowId[workflowId.value] ?? [],
-);
+const executionsStore = useExecutionsStore();
 
-const testDefinition = computed(() =>
-	testDefinitions.value.find((test) => test.id === route.query.testId),
-);
-
-const disableAddToTestTooltip = computed(() => {
-	if (props.execution.mode === 'evaluation') {
-		return locale.baseText('testDefinition.executions.tooltip.noExecutions');
-	}
-
-	if (props.execution.status !== 'success') {
-		return locale.baseText('testDefinition.executions.tooltip.onlySuccess');
-	}
-
-	return '';
+const activeExecution = computed(() => {
+	return executionsStore.activeExecution as ExecutionSummary & {
+		customData?: Record<string, string>;
+	};
 });
 
-type Command = {
-	type: 'addTag' | 'removeTag' | 'createTest';
-	id: string;
-	name: string;
-};
-
-const getTagIds = (tags?: Array<{ id: string; name: string }>) => (tags ?? []).map((t) => t.id);
-
-const addExecutionTag = async (annotationTagId: string) => {
-	const newTags = [...getTagIds(props.execution?.annotation?.tags), annotationTagId];
-	await executionsStore.annotateExecution(props.execution.id, { tags: newTags });
-	toast.showToast({
-		title: locale.baseText('testDefinition.executions.toast.addedTo.title'),
-		message: h(
-			N8nText,
-			{
-				color: 'primary',
-				style: { cursor: 'pointer ' },
-			},
-			() => locale.baseText('testDefinition.executions.toast.closeTab'),
-		),
-		closeOnClick: false,
-		onClick() {
-			window.close();
-		},
-		type: 'success',
-	});
-};
-
-const removeExecutionTag = async (annotationTagId: string) => {
-	const newTags = getTagIds(props.execution?.annotation?.tags).filter(
-		(id) => id !== annotationTagId,
-	);
-	await executionsStore.annotateExecution(props.execution.id, { tags: newTags });
-	toast.showMessage({
-		title: locale.baseText('testDefinition.executions.toast.removedFrom.title'),
-		type: 'success',
-	});
-};
-
-const createTestForExecution = async (id: string) => {
-	await router.push({
-		name: VIEWS.NEW_TEST_DEFINITION,
-		params: {
-			name: workflowId.value,
-		},
-		query: {
-			executionId: id,
-			annotationTags: getTagIds(props.execution?.annotation?.tags),
-		},
-	});
-};
-
-const commandCallbacks = {
-	addTag: addExecutionTag,
-	removeTag: removeExecutionTag,
-	createTest: createTestForExecution,
-} as const;
-
-const handleCommand = async (command: Command) => {
-	const action = commandCallbacks[command.type];
-	return await action(command.id);
-};
-
-const testList = computed(() => {
-	return testDefinitions.value.reduce<
-		Array<{ label: string; value: string; added: boolean; command: Command }>
-	>((acc, test) => {
-		if (!test.annotationTagId) return acc;
-
-		const added = isTagAlreadyAdded(test.annotationTagId);
-
-		acc.push({
-			label: test.name,
-			value: test.annotationTagId,
-			added,
-			command: { type: added ? 'removeTag' : 'addTag', id: test.annotationTagId, name: test.name },
-		});
-
-		return acc;
-	}, []);
-});
-
-function isTagAlreadyAdded(tagId?: string | null) {
-	return Boolean(tagId && props.execution?.annotation?.tags.some((tag) => tag.id === tagId));
-}
-
-const executionHasTestTag = computed(() =>
-	isTagAlreadyAdded(testDefinition.value?.annotationTagId),
-);
+const vote = computed(() => activeExecution.value?.annotation?.vote || null);
 
 async function onDeleteExecution(): Promise<void> {
 	// Prepend the message with a note about annotations if they exist
@@ -227,9 +123,19 @@ function onRetryButtonBlur(event: FocusEvent) {
 	}
 }
 
-onMounted(async () => {
-	await testDefinitionStore.fetchTestDefinitionsByWorkflowId(workflowId.value);
-});
+const onVoteClick = async (voteValue: AnnotationVote) => {
+	if (!activeExecution.value) {
+		return;
+	}
+
+	const voteToSet = voteValue === vote.value ? null : voteValue;
+
+	try {
+		await executionsStore.annotateExecution(activeExecution.value.id, { vote: voteToSet });
+	} catch (e) {
+		showError(e, 'executionAnnotationView.vote.error');
+	}
+};
 </script>
 
 <template>
@@ -264,157 +170,90 @@ onMounted(async () => {
 			:class="$style.executionDetails"
 			:data-test-id="`execution-preview-details-${executionId}`"
 		>
-			<WorkflowExecutionAnnotationPanel v-if="isAnnotationEnabled && execution" />
-			<div>
-				<N8nText size="large" color="text-base" :bold="true" data-test-id="execution-time">{{
-					executionUIDetails?.startTime
-				}}</N8nText
-				><br />
-				<N8nSpinner
-					v-if="executionUIDetails?.name === 'running'"
-					size="small"
-					:class="[$style.spinner, 'mr-4xs']"
-				/>
-				<N8nText
-					size="medium"
-					:class="[$style.status, $style[executionUIDetails.name]]"
-					data-test-id="execution-preview-label"
-				>
-					{{ executionUIDetails.label }}
-				</N8nText>
-				{{ ' ' }}
-				<N8nText v-if="executionUIDetails?.showTimestamp === false" color="text-base" size="medium">
-					| ID#{{ execution.id }}
-				</N8nText>
-				<N8nText v-else-if="executionUIDetails.name === 'running'" color="text-base" size="medium">
-					{{
-						locale.baseText('executionDetails.runningTimeRunning', {
-							interpolate: { time: executionUIDetails?.runningTime },
-						})
-					}}
-					| ID#{{ execution.id }}
-				</N8nText>
-				<N8nText
-					v-else-if="executionUIDetails.name !== 'waiting'"
-					color="text-base"
-					size="medium"
-					data-test-id="execution-preview-id"
-				>
-					{{
-						locale.baseText('executionDetails.runningTimeFinished', {
-							interpolate: { time: executionUIDetails?.runningTime ?? 'unknown' },
-						})
-					}}
-					| ID#{{ execution.id }}
-				</N8nText>
-				<br /><N8nText v-if="execution.mode === 'retry'" color="text-base" size="medium">
-					{{ locale.baseText('executionDetails.retry') }}
-					<RouterLink
-						:class="$style.executionLink"
-						:to="{
-							name: VIEWS.EXECUTION_PREVIEW,
-							params: {
-								workflowId: execution.workflowId,
-								executionId: execution.retryOf,
-							},
-						}"
+			<div :class="$style.executionDetailsLeft">
+				<div :class="$style.executionTitle">
+					<N8nText size="large" color="text-dark" :bold="true" data-test-id="execution-time">{{
+						executionUIDetails?.startTime
+					}}</N8nText
+					><VoteButtons
+						v-if="isAnnotationEnabled && execution"
+						data-test-id="execution-preview-vote-buttons"
+						:vote="vote"
+						:class="$style.voteButtons"
+						@vote-click="onVoteClick"
+					/>
+				</div>
+				<div :class="$style.executionDetailsInfo">
+					<N8nSpinner
+						v-if="executionUIDetails?.name === 'running'"
+						size="small"
+						:class="[$style.spinner, 'mr-4xs']"
+					/>
+					<N8nText
+						size="medium"
+						:class="[$style.status, $style[executionUIDetails.name]]"
+						data-test-id="execution-preview-label"
 					>
-						#{{ execution.retryOf }}
-					</RouterLink>
-				</N8nText>
-			</div>
-			<div :class="$style.actions">
-				<N8nTooltip
-					placement="top"
-					:content="disableAddToTestTooltip"
-					:disabled="!disableAddToTestTooltip"
-				>
-					<ElDropdown
-						trigger="click"
-						placement="bottom-end"
-						data-test-id="test-execution-crud"
-						@command="handleCommand"
+						{{ executionUIDetails.label }}
+					</N8nText>
+					{{ ' ' }}
+					<N8nText
+						v-if="executionUIDetails?.showTimestamp === false"
+						color="text-base"
+						size="medium"
 					>
-						<div v-if="testDefinition" :class="$style.buttonGroup">
-							<N8nButton
-								v-if="executionHasTestTag"
-								:disabled="!!disableAddToTestTooltip"
-								type="secondary"
-								data-test-id="test-execution-remove"
-								@click.stop="removeExecutionTag(testDefinition.annotationTagId!)"
-							>
-								{{
-									locale.baseText('testDefinition.executions.removeFrom', {
-										interpolate: { name: testDefinition.name },
-									})
-								}}
-							</N8nButton>
-
-							<N8nButton
-								v-else
-								:disabled="!!disableAddToTestTooltip"
-								type="primary"
-								data-test-id="test-execution-add"
-								@click.stop="addExecutionTag(testDefinition.annotationTagId!)"
-							>
-								{{
-									locale.baseText('testDefinition.executions.addTo.existing', {
-										interpolate: { name: testDefinition.name },
-									})
-								}}
-							</N8nButton>
-							<N8nIconButton
-								:disabled="!!disableAddToTestTooltip"
-								icon="angle-down"
-								:type="executionHasTestTag ? 'secondary' : 'primary'"
-								data-test-id="test-execution-toggle"
-							/>
-						</div>
-
-						<N8nButton
-							v-else
-							:disabled="!!disableAddToTestTooltip"
-							type="secondary"
-							data-test-id="test-execution-toggle"
+						| ID#{{ execution.id }}
+					</N8nText>
+					<N8nText
+						v-else-if="executionUIDetails.name === 'running'"
+						color="text-base"
+						size="medium"
+					>
+						{{
+							locale.baseText('executionDetails.runningTimeRunning', {
+								interpolate: { time: executionUIDetails?.runningTime },
+							})
+						}}
+						| ID#{{ execution.id }}
+					</N8nText>
+					<N8nText
+						v-else-if="executionUIDetails.name !== 'waiting'"
+						color="text-base"
+						size="medium"
+						data-test-id="execution-preview-id"
+					>
+						{{
+							locale.baseText('executionDetails.runningTimeFinished', {
+								interpolate: { time: executionUIDetails?.runningTime ?? 'unknown' },
+							})
+						}}
+						| ID#{{ execution.id }}
+					</N8nText>
+				</div>
+				<div v-if="execution.mode === 'retry'" :class="$style.executionDetailsRetry">
+					<N8nText color="text-base" size="small">
+						{{ locale.baseText('executionDetails.retry') }}
+						<RouterLink
+							:class="$style.executionLink"
+							:to="{
+								name: VIEWS.EXECUTION_PREVIEW,
+								params: {
+									workflowId: execution.workflowId,
+									executionId: execution.retryOf,
+								},
+							}"
 						>
-							{{ locale.baseText('testDefinition.executions.addTo.new') }}
-							<N8nIcon icon="angle-down" size="small" class="ml-2xs" />
-						</N8nButton>
+							#{{ execution.retryOf }}
+						</RouterLink>
+					</N8nText>
+				</div>
+				<WorkflowExecutionAnnotationTags
+					v-if="isAnnotationEnabled && execution"
+					:execution="execution"
+				/>
+			</div>
 
-						<template #dropdown>
-							<ElDropdownMenu :class="$style.testDropdownMenu">
-								<div :class="$style.testDropdownMenuScroll">
-									<ElDropdownItem
-										v-for="test in testList"
-										:key="test.value"
-										:command="test.command"
-										data-test-id="test-execution-add-to"
-									>
-										<N8nText
-											:color="test.added ? 'primary' : 'text-dark'"
-											:class="$style.fontMedium"
-										>
-											<N8nIcon v-if="test.added" icon="check" color="primary" />
-											{{ test.label }}
-										</N8nText>
-									</ElDropdownItem>
-								</div>
-								<ElDropdownItem
-									:class="$style.createTestButton"
-									:command="{ type: 'createTest', id: execution.id }"
-									:disabled="!workflowPermissions.update"
-									data-test-id="test-execution-create"
-								>
-									<N8nText :class="$style.fontMedium">
-										<N8nIcon icon="plus" />
-										{{ locale.baseText('testDefinition.executions.tooltip.addTo') }}
-									</N8nText>
-								</ElDropdownItem>
-							</ElDropdownMenu>
-						</template>
-					</ElDropdown>
-				</N8nTooltip>
-
+			<div :class="$style.actions">
 				<RouterLink
 					:to="{
 						name: VIEWS.EXECUTION_DEBUG,
@@ -442,7 +281,6 @@ onMounted(async () => {
 					v-if="isRetriable"
 					ref="retryDropdown"
 					trigger="click"
-					class="mr-xs"
 					@command="handleRetryClick"
 				>
 					<span class="retry-button">
@@ -451,7 +289,7 @@ onMounted(async () => {
 							type="tertiary"
 							:title="locale.baseText('executionsList.retryExecution')"
 							:disabled="!workflowPermissions.update"
-							icon="redo"
+							icon="redo-2"
 							data-test-id="execution-preview-retry-button"
 							@blur="onRetryButtonBlur"
 						/>
@@ -467,10 +305,16 @@ onMounted(async () => {
 						</ElDropdownMenu>
 					</template>
 				</ElDropdown>
+
+				<WorkflowExecutionAnnotationPanel
+					v-if="isAnnotationEnabled && activeExecution"
+					:execution="activeExecution"
+				/>
+
 				<N8nIconButton
 					:title="locale.baseText('executionDetails.deleteExecution')"
 					:disabled="!workflowPermissions.update"
-					icon="trash"
+					icon="trash-2"
 					size="medium"
 					type="tertiary"
 					data-test-id="execution-preview-delete-button"
@@ -484,6 +328,7 @@ onMounted(async () => {
 			loader-type="spinner"
 			:execution-id="executionId"
 			:execution-mode="execution?.mode || ''"
+			:node-id="nodeId"
 		/>
 	</div>
 </template>
@@ -498,11 +343,10 @@ onMounted(async () => {
 .executionDetails {
 	position: absolute;
 	padding: var(--spacing-m);
-	padding-right: var(--spacing-xl);
 	width: 100%;
 	display: flex;
 	justify-content: space-between;
-	align-items: center;
+	align-items: flex-start;
 	transition: all 150ms ease-in-out;
 	pointer-events: none;
 
@@ -514,6 +358,22 @@ onMounted(async () => {
 	& * {
 		pointer-events: all;
 	}
+}
+
+.executionDetailsLeft {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-5xs);
+}
+
+.executionTitle {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-3xs);
+}
+
+.voteButtons {
+	margin-bottom: 2px;
 }
 
 .spinner {
@@ -563,43 +423,25 @@ onMounted(async () => {
 
 .actions {
 	display: flex;
-	gap: var(--spacing-xs);
+	gap: var(--spacing-2xs);
 }
 
-.testDropdownMenu {
-	padding: 0;
+.highlightDataButton {
+	height: 30px;
+	width: 30px;
 }
 
-.testDropdownMenuScroll {
-	max-height: 274px;
-	overflow-y: auto;
-	overflow-x: hidden;
+.highlightDataButtonActive {
+	width: auto;
 }
 
-.createTestButton {
-	border-top: 1px solid var(--color-foreground-base);
-	background-color: var(--color-background-light-base);
-	border-bottom-left-radius: var(--border-radius-base);
-	border-bottom-right-radius: var(--border-radius-base);
-	&:not(.is-disabled):hover {
-		color: var(--color-primary);
-	}
+.highlightDataButtonOpen {
+	color: var(--color-primary);
+	background-color: var(--color-button-secondary-hover-background);
+	border-color: var(--color-button-secondary-hover-active-focus-border);
 }
 
-.fontMedium {
-	font-weight: 600;
-}
-
-.buttonGroup {
-	display: inline-flex;
-	:global(.button:first-child) {
-		border-top-right-radius: 0;
-		border-bottom-right-radius: 0;
-	}
-	:global(.button:last-child) {
-		border-top-left-radius: 0;
-		border-bottom-left-radius: 0;
-		border-left: 0;
-	}
+.badge {
+	border: 0;
 }
 </style>

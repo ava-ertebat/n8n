@@ -19,12 +19,12 @@ import {
 } from 'n8n-workflow';
 
 import { cssVariables } from './cssVariables';
-import { renderFormCompletion } from './formCompletionUtils';
-import { renderFormNode } from './formNodeUtils';
+import { renderFormCompletion } from './utils/formCompletionUtils';
+import { renderFormNode } from './utils/formNodeUtils';
+import { prepareFormReturnItem, resolveRawData } from './utils/utils';
 import { configureWaitTillDate } from '../../utils/sendAndWait/configureWaitTillDate.util';
 import { limitWaitTimeProperties } from '../../utils/sendAndWait/descriptions';
 import { formDescription, formFields, formTitle } from '../Form/common.descriptions';
-import { prepareFormReturnItem, resolveRawData } from '../Form/utils';
 
 const waitTimeProperties: INodeProperties[] = [
 	{
@@ -253,7 +253,7 @@ const completionProperties = updateDisplayOptions(
 			],
 			displayOptions: {
 				show: {
-					respondWith: ['text', 'returnBinary'],
+					respondWith: ['text', 'returnBinary', 'redirect'],
 				},
 			},
 		},
@@ -283,7 +283,7 @@ export class Form extends Node {
 				path: '',
 				restartWebhook: true,
 				isFullPath: true,
-				isForm: true,
+				nodeType: 'form',
 			},
 			{
 				name: 'default',
@@ -292,12 +292,11 @@ export class Form extends Node {
 				path: '',
 				restartWebhook: true,
 				isFullPath: true,
-				isForm: true,
+				nodeType: 'form',
 			},
 		],
 		properties: [
 			{
-				// eslint-disable-next-line n8n-nodes-base/node-param-display-name-miscased
 				displayName: 'An n8n Form Trigger node must be set up before this node',
 				name: 'triggerNotice',
 				type: 'notice',

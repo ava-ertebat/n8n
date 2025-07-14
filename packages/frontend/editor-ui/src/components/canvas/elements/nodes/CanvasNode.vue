@@ -32,8 +32,10 @@ import {
 } from '@/utils/canvasUtils';
 import type { EventBus } from '@n8n/utils/event-bus';
 import { createEventBus } from '@n8n/utils/event-bus';
-import { isEqual } from 'lodash-es';
+import isEqual from 'lodash/isEqual';
 import CanvasNodeTrigger from '@/components/canvas/elements/nodes/render-types/parts/CanvasNodeTrigger.vue';
+import { CONFIGURATION_NODE_OFFSET, GRID_SIZE } from '@/utils/nodeViewUtils';
+import { useExperimentalNdvStore } from '../../experimental/experimentalNdv.store';
 
 type Props = NodeProps<CanvasNodeData> & {
 	readOnly?: boolean;
@@ -56,7 +58,7 @@ const emit = defineEmits<{
 	run: [id: string];
 	select: [id: string, selected: boolean];
 	toggle: [id: string];
-	activate: [id: string];
+	activate: [id: string, event: MouseEvent];
 	deactivate: [id: string];
 	'open:contextmenu': [id: string, event: MouseEvent, source: 'node-button' | 'node-right-click'];
 	update: [id: string, parameters: Record<string, unknown>];
@@ -71,7 +73,9 @@ const props = defineProps<Props>();
 
 const contextMenu = useContextMenu();
 
-const { connectingHandle } = useCanvas();
+const { connectingHandle, viewport } = useCanvas();
+
+const experimentalNdvStore = useExperimentalNdvStore();
 
 /*
   Toolbar slot classes
@@ -94,6 +98,10 @@ const {
 });
 
 const isDisabled = computed(() => props.data.disabled);
+
+const isExperimentalEmbeddedNdvShown = computed(() =>
+	experimentalNdvStore.isActive(viewport.value.zoom),
+);
 
 const classes = computed(() => ({
 	[style.canvasNode]: true,
@@ -183,6 +191,12 @@ const createEndpointMappingFn =
 			connectingHandle.value?.nodeId === props.id &&
 			connectingHandle.value?.handleType === handleType &&
 			connectingHandle.value?.handleId === handleId;
+		const offsetValue =
+			position === Position.Bottom
+				? `${GRID_SIZE * 2 * (1 + index * 2) + CONFIGURATION_NODE_OFFSET}px`
+				: isExperimentalEmbeddedNdvShown.value && endpoints.length === 1
+					? `${(1 + index) * (GRID_SIZE * 2)}px`
+					: `${(100 / (endpoints.length + 1)) * (index + 1)}%`;
 
 		return {
 			...endpoint,
@@ -191,7 +205,7 @@ const createEndpointMappingFn =
 			isConnecting,
 			position,
 			offset: {
-				[offsetAxis]: `${(100 / (endpoints.length + 1)) * (index + 1)}%`,
+				[offsetAxis]: offsetValue,
 			},
 		};
 	};
@@ -240,8 +254,8 @@ function onDisabledToggle() {
 	emit('toggle', props.id);
 }
 
-function onActivate() {
-	emit('activate', props.id);
+function onActivate(id: string, event: MouseEvent) {
+	emit('activate', id, event);
 }
 
 function onDeactivate() {
@@ -287,6 +301,10 @@ provide(CanvasNodeKey, {
 	readOnly,
 	eventBus: canvasNodeEventBus,
 });
+
+const hasToolbar = computed(
+	() => ![CanvasNodeRenderType.AddNodes, CanvasNodeRenderType.AIPrompt].includes(renderType.value),
+);
 
 const showToolbar = computed(() => {
 	const target = contextMenu.target.value;
@@ -373,7 +391,7 @@ onBeforeUnmount(() => {
 		</template>
 
 		<CanvasNodeToolbar
-			v-else
+			v-else-if="hasToolbar"
 			data-test-id="canvas-node-toolbar"
 			:read-only="readOnly"
 			:class="$style.canvasNodeToolbar"
@@ -390,6 +408,7 @@ onBeforeUnmount(() => {
 			@move="onMove"
 			@update="onUpdate"
 			@open:contextmenu="onOpenContextMenuFromNode"
+			@delete="onDelete"
 		/>
 
 		<CanvasNodeTrigger
